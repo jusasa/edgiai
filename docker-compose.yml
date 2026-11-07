@@ -5,9 +5,19 @@ services:
     build: ./edge-ai
     container_name: edge-ai-diagnostics
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      - MQTT_BROKER=192.168.50.194   # ★ 게이트웨이 라즈베리파이 IP 입력
-      - MQTT_PORT=1883
-      - MQTT_USER=202345021
-      - MQTT_PASS=1234
-      - FAN_SPEED=1
+      MQTT_BROKER: ${MQTT_BROKER:-192.168.50.194}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USER: ${MQTT_USER:-202345021}
+      MQTT_PASS: ${MQTT_PASS:-1234}
+      FAN_SPEED: ${FAN_SPEED:-2}
+      RMS_LIMIT: ${RMS_LIMIT:-0.35}
+      WARN_TH: ${WARN_TH:-0.60}
+      FAULT_TH: ${FAULT_TH:-0.85}
+      R1X_FAULT: ${R1X_FAULT:-0.65}
+      KURT_FAULT: ${KURT_FAULT:-5.0}
+      VEL_FAULT: ${VEL_FAULT:-4.5}
+    volumes:
+      - ./edge-ai:/app
