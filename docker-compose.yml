@@ -19,5 +19,8 @@ services:
       R1X_FAULT: ${R1X_FAULT:-0.65}
       KURT_FAULT: ${KURT_FAULT:-5.0}
       VEL_FAULT: ${VEL_FAULT:-4.5}
+      ALARM_SERVER_HOST: ${ALARM_SERVER_HOST:-192.168.50.194}
+      ALARM_SERVER_PORT: ${ALARM_SERVER_PORT:-50051}
+      ENABLE_BUZZER_ALARM: ${ENABLE_BUZZER_ALARM:-true}
     volumes:
       - ./edge-ai:/app

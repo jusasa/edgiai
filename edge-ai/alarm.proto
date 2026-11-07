@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package alarm;
+
+// 공조기(AHU) FDD/PHM 현장 피에조 부저 및 액추에이터 제어 서비스
+service AlarmActuator {
+    // 실시간 건전성 진단 결과에 따른 피에조 부저 발령 (초저지연 < 10ms)
+    rpc TriggerAlarm (AlarmRequest) returns (AlarmResponse);
+
+    // 정상 복귀 시 피에조 부저 즉각 무음화
+    rpc SilenceAlarm (SilenceRequest) returns (AlarmResponse);
+}
+
+message AlarmRequest {
+    string device_id = 1;       // 대상 기기 식별자 (예: machine01)
+    int32 health_code = 2;      // 0: NORMAL, 1: WARNING, 2: FAULT
+    string health_status = 3;   // 상태 문자열 (NORMAL, WARNING, FAULT)
+    string fault_hint = 4;      // 결함 세부 힌트 (기계적 헐거움, 불균형 등)
+    int32 duration_ms = 5;      // 알람 지속 시간 (ms, 0: 수동 정지 시까지)
+    int32 frequency_hz = 6;     // 피에조 공진 주파수 (기본 2700Hz)
+}
+
+message SilenceRequest {
+    string device_id = 1;       // 대상 기기 식별자
+    string reason = 2;          // 소음 해제 사유 (예: "정상 복귀", "운영자 확인")
+}
+
+message AlarmResponse {
+    bool success = 1;           // 액추에이션 성공 여부
+    string message = 2;         // 처리 결과 메시지
+    int64 timestamp = 3;        // 처리 타임스탬프 (ms)
+}

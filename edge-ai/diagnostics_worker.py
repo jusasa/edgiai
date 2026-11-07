@@ -6,6 +6,12 @@ import joblib
 import numpy as np
 import paho.mqtt.client as mqtt
 
+# gRPC 초저지연 현장 피에조 부저 액추에이터 클라이언트
+try:
+    import alarm_client
+except ImportError:
+    alarm_client = None
+
 # 게이트웨이 원격 접속 환경변수
 MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.50.194")
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
@@ -114,12 +120,25 @@ def on_message(client, userdata, msg):
 
         feat_vector = np.array([[acc_rms, cf, kurt, rpm, b_1x, b_harm, r1x, rh]])
 
+        # [물리 안전망 0단계: 선풍기 정지(STOPPED) 최우선 물리 판정]
+        # 실측 데이터 분석 결과 off 상태의 RMS는 평균 0.0021g(열잡음) 수준임.
+        # 회전수가 0이거나 RMS가 0.015g 미만인 경우 기계 결함이 아닌 '전원 OFF'로 최우선 확정
+        is_physically_stopped = (acc_rms < 0.015) or (rpm == 0.0 and acc_rms < 0.03)
+
         # 3. 세기별 머신러닝 추론 (XGBoost)
         bundle = get_model(current_speed)
         ml_model = bundle.get("model") if bundle else None
         label_encoder = bundle.get("label_encoder") if bundle else None
 
-        if ml_model is not None and label_encoder is not None:
+        if is_physically_stopped:
+            health_code = 0
+            health_status = "STOPPED"
+            fault_hint = "선풍기 정지"
+            anomaly_score = 0.0
+            # 정지 시 시계열 큐 초기화 (이전 가동 시 데이터와의 오차 및 RUL 왜곡 차단)
+            HIST_SCORE.clear()
+            HIST_RMS.clear()
+        elif ml_model is not None and label_encoder is not None:
             pred_idx = ml_model.predict(feat_vector)[0]
             pred_label = str(label_encoder.inverse_transform([pred_idx])[0])
             proba = ml_model.predict_proba(feat_vector)[0]
@@ -139,6 +158,8 @@ def on_message(client, userdata, msg):
                 health_status = "STOPPED"
                 fault_hint = "선풍기 정지"
                 anomaly_score = 0.0
+                HIST_SCORE.clear()
+                HIST_RMS.clear()
             elif pred_label == "unbal1g":
                 health_code = 1
                 health_status = "WARNING"
@@ -178,16 +199,17 @@ def on_message(client, userdata, msg):
                     health_status = "WARNING"
                     fault_hint += " [주의 임계 초과]"
 
-        # 5. 잔여 수명(RUL) 계산 (정지 상태가 아닐 때 큐 누적)
+        # 5. 잔여 수명(RUL) 계산 (정지 상태가 아닐 때만 큐 누적 및 외삽)
         ts = int(data.get("ts", time.time() * 1000))
         if health_status != "STOPPED":
             HIST_SCORE.append((ts, anomaly_score))
             HIST_RMS.append((ts, acc_rms))
-
-        # 점수 기반 외삽과 RMS 기반 외삽 중 신뢰도 높은 RUL 도출
-        rul_score = predict_rul_minutes(HIST_SCORE, CFG["faultTh"])
-        rul_rms   = predict_rul_minutes(HIST_RMS, CFG["rmsLimit"])
-        rul_val = rul_score if rul_score is not None else rul_rms
+            # 점수 기반 외삽과 RMS 기반 외삽 중 신뢰도 높은 RUL 도출
+            rul_score = predict_rul_minutes(HIST_SCORE, CFG["faultTh"])
+            rul_rms   = predict_rul_minutes(HIST_RMS, CFG["rmsLimit"])
+            rul_val = rul_score if rul_score is not None else rul_rms
+        else:
+            rul_val = None
 
         # 6. ThingsBoard 최종 진단 텔레메트리 페이로드 생성
         out_payload = {
@@ -203,6 +225,21 @@ def on_message(client, userdata, msg):
         # 게이트웨이가 구독할 텔레메트리 토픽으로 발행
         out_topic = f"factory/{device_name}/diagnostics"
         client.publish(out_topic, json.dumps(out_payload), qos=1)
+
+        # 7. [과제 지시서 PDF 표준] ESP32 피에조 부저 RPC 명령 발행 (GPIO 25 제어)
+        # 토픽: cmd/<dev>/rpc/setBuzzer, 페이로드: {"on": true/false}
+        # - Critical(FAULT) 감지 시: tone(PIN_BUZZ, 2000) 2,000Hz 비상 경보음 발진
+        # - NORMAL/STOPPED 복구 시: noTone(PIN_BUZZ) 즉시 묵음
+        buzzer_topic = f"cmd/{device_name}/rpc/setBuzzer"
+        is_buzzer_on = (health_code == 2)  # FAULT(고장) 발생 시 부저 발진
+        client.publish(buzzer_topic, json.dumps({"on": is_buzzer_on}), qos=1)
+
+        # 8. [초저지연 엣지 백업 파이프라인] gRPC 기반 피에조 액추에이션 연동
+        if alarm_client is not None:
+            if health_code >= 1:
+                alarm_client.trigger_alarm(device_name, health_code, health_status, fault_hint)
+            else:
+                alarm_client.silence_alarm(device_name, reason=f"정상 상태 유지 ({health_status})")
 
         print(
             f"[ML] seq={data.get('seq')} | {health_status} ({fault_hint}) | "

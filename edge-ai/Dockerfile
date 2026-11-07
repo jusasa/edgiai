@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY diagnostics_worker.py .
-COPY model.joblib .
+COPY . .
 
 CMD ["python", "-u", "diagnostics_worker.py"]
