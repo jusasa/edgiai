@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  edge-ai:
+    build: ./edge-ai
+    container_name: edge-ai-diagnostics
+    restart: unless-stopped
+    environment:
+      - MQTT_BROKER=192.168.50.194   # ★ 게이트웨이 라즈베리파이 IP 입력
+      - MQTT_PORT=1883
+      - MQTT_USER=202345021
+      - MQTT_PASS=1234
+      - FAN_SPEED=1
