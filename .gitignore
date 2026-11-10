@@ -1,3 +1,3 @@
-model.joblib
+*.joblib
 .env
 __pycache__/
