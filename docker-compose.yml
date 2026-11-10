@@ -10,8 +10,8 @@ services:
     environment:
       MQTT_BROKER: ${MQTT_BROKER:-192.168.50.194}
       MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_USER: ${MQTT_USER:-202345021}
-      MQTT_PASS: ${MQTT_PASS:-1234}
+      MQTT_USER: ${MQTT_USER:?.env에 MQTT_USER가 없습니다}
+      MQTT_PASS: ${MQTT_PASS:?.env에 MQTT_PASS가 없습니다}
       FAN_SPEED: ${FAN_SPEED:-2}
       RMS_LIMIT: ${RMS_LIMIT:-0.35}
       WARN_TH: ${WARN_TH:-0.60}
